@@ -306,6 +306,11 @@ def index():
     """Rota principal que carrega a interface do chatbot."""
     return render_template('index.html')
 
+    @app.route('/projeto2')
+def projeto2():
+    """Rota principal que carrega a interface do chatbot."""
+    return render_template('projeto2.html')
+
 
 # Para simplificar, o histórico ficará em memória por sessão FIXA aqui.
 # Em produção, você iria guardar por usuário (session, banco, etc.).

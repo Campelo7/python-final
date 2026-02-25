@@ -1,70 +1,116 @@
-import os
 import requests
-import dotenv
 
-# dotenv.load_dotenv()
-# API_KEY = os.getenv('GEMINI_API_KEY')
-# modelo = 'gemini-2.5-flash'
-# url_base = f"https://generativelanguage.googleapis.com/v1beta/models"
-# url = f"{url_base}/{modelo}:generateContent?key={API_KEY}"
-# print(url)
-# mensagem = input('Faça sua pergunta')
-# payload = {
-#     "contents":[
-#         {
-#             "parts":[
-#                 {"text":mensagem}
-#             ]
-#         }
-#     ]
-# }
-# resposta = requests.post(url,json=payload)
-# resposta = resposta.json()
-# texto_resp = resposta['candidates'][0]['content']['parts'][0]['text']
-# print(f'O gemini respondeu: {texto_resp}')
+# ======================================
+# CONFIGURAÇÃO FLOWISE (RAG JURÍDICO)
+# ======================================
 
-def conversar_gemini(modelo='gemini-2.5-flash',payload=''):
-    dotenv.load_dotenv()
-    API_KEY = os.getenv('GEMINI_API_KEY')
-    url_base = f"https://generativelanguage.googleapis.com/v1beta/models"
-    url = f"{url_base}/{modelo}:generateContent?key={API_KEY}"
-    resposta = requests.post(url,json=payload)
-    resposta = resposta.json()
-    # texto_resp = resposta['candidates'][0]['content']['parts'][0]['text']
-    return resposta
+FLOWISE_API_URL = "https://cloud.flowiseai.com/api/v1/prediction/826ba8e7-692b-4530-becc-b9e2c24245ea"
 
-import datetime
+# Se precisar de API Key no Flowise:
+# FLOWISE_API_KEY = "SUA_CHAVE_AQUI"
 
-hora_atual = datetime.datetime.now()
-print(f'Hora atual: {hora_atual.hour}:{hora_atual.minute}')
-payload = {
-            "systemInstruction":{"parts":[
-                {
-                    "text": f"Você é um atendente virtual de uma lanchonete. Regras: - Fale sempre em português - Seja educado e objetivo - Faça apenas uma pergunta por vez - Não crie promoções - Sempre confirme o pedido antes de finalizar - Se faltar alguma infomação pergunte e não suponha - O horário de funcionamento da loja é de 18 as 00:00 - A hora agora é {hora_atual.hour}:{hora_atual.minute}"
-                    }
-                ]},
-            "contents":[],
-            "generationConfig":{
-                "maxOutputTokens":200,
-                "temperature":0.1,
-            }
-        }
+# ======================================
+# HISTÓRICO LOCAL DA CONVERSA
+# ======================================
+
+historico = []
+
+# ======================================
+# FUNÇÃO PRINCIPAL FLOWISE
+# ======================================
+
+def conversar_flowise(mensagem_usuario):
+    global historico
+
+    # Monta histórico formatado
+    contexto_formatado = ""
+    for msg in historico:
+        if msg["role"] == "user":
+            contexto_formatado += f"Usuário: {msg['content']}\n"
+        elif msg["role"] == "assistant":
+            contexto_formatado += f"Assistente: {msg['content']}\n"
+
+    pergunta_final = f"""
+Você é um assistente jurídico especializado em Direito do Consumidor brasileiro.
+
+Responda exclusivamente com base no Código de Defesa do Consumidor e documentos fornecidos.
+Sempre cite o artigo da lei quando possível.
+Se não houver base legal, informe que não encontrou fundamento legal.
+Use linguagem formal e objetiva.
+
+Histórico da conversa:
+{contexto_formatado}
+
+Pergunta atual:
+{mensagem_usuario}
+"""
+
+    payload = {
+        "question": pergunta_final
+    }
+
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    # Caso use autenticação:
+    # headers["Authorization"] = f"Bearer {FLOWISE_API_KEY}"
+
+    try:
+        response = requests.post(
+            FLOWISE_API_URL,
+            json=payload,
+            headers=headers,
+            timeout=60
+        )
+
+        response.raise_for_status()
+        resposta_json = response.json()
+
+        texto_ia = (
+            resposta_json.get("text")
+            or resposta_json.get("answer")
+            or str(resposta_json)
+        )
+
+        # Atualiza histórico
+        historico.append({"role": "user", "content": mensagem_usuario})
+        historico.append({"role": "assistant", "content": texto_ia})
+
+        return texto_ia
+
+    except requests.RequestException as e:
+        return f"Erro ao comunicar com o assistente jurídico: {str(e)}"
+
+
+# ======================================
+# INTERFACE TERMINAL (CLI)
+# ======================================
+
+def menu():
+    print("\n=== Assistente Jurídico - Direito do Consumidor ===")
+    print("1 - Fazer pergunta")
+    print("2 - Resetar conversa")
+    print("3 - Sair")
+
 
 while True:
-    opcao = input('1 - Converse com o atendente\n2 - Sair\nResposta: ')
-    if opcao == '1':
-        mensagem = input('Digite sua pergunta: ')
+    menu()
+    opcao = input("Resposta: ")
 
-        content = { "role":"user","parts":[{"text":mensagem}]}
-        payload['contents'].append(content)
+    if opcao == "1":
+        mensagem = input("\nDigite sua pergunta jurídica: ")
+        resposta = conversar_flowise(mensagem)
+        print("\nAssistente Jurídico:\n")
+        print(resposta)
 
-        resposta = conversar_gemini(payload=payload)
+    elif opcao == "2":
+        historico = []
+        print("\nConversa reiniciada.\n")
 
-        resposta_gemini = resposta['candidates'][0]['content']
-        payload['contents'].append(resposta_gemini)
-
-        print(f'resposta: {resposta_gemini}')
-
-    elif opcao == '2':
-        print('Saindo')
+    elif opcao == "3":
+        print("\nEncerrando sistema.\n")
         break
+
+    else:
+        print("\nOpção inválida.\n")
